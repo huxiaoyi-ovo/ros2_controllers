@@ -19,6 +19,7 @@
 #include <functional>  // for std::reference_wrapper
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "control_msgs/action/follow_joint_trajectory.hpp"
@@ -201,7 +202,62 @@ protected:
   ControllerStateMsg state_msg_;
 
   using FollowJTrajAction = control_msgs::action::FollowJointTrajectory;
-  using RealtimeGoalHandle = realtime_tools::RealtimeServerGoalHandle<FollowJTrajAction>;
+  using RealtimeGoalHandleBase = realtime_tools::RealtimeServerGoalHandle<FollowJTrajAction>;
+
+  class RealtimeGoalHandle : public RealtimeGoalHandleBase
+  {
+  public:
+    using FeedbackSharedPtr = FollowJTrajAction::Feedback::SharedPtr;
+    using RealtimeGoalHandleBase::RealtimeGoalHandleBase;
+
+    // Called from the non-RT goal callback after the primary feedback message has been sized.
+    // All dynamic allocation for the second buffer therefore happens outside the update loop.
+    void initialize_feedback_buffers()
+    {
+      alternate_feedback_ =
+        std::make_shared<FollowJTrajAction::Feedback>(*this->preallocated_feedback_);
+    }
+
+    // Hand the completed RT snapshot to the non-RT publisher. Rotate buffers only after the
+    // try-lock handoff succeeds; on failure, the current writable buffer stays private to RT.
+    bool set_feedback_from_rt()
+    {
+      if (!alternate_feedback_)
+      {
+        return false;
+      }
+
+      const auto feedback = this->preallocated_feedback_;
+      if (!RealtimeGoalHandleBase::setFeedback(feedback))
+      {
+        return false;
+      }
+
+      std::swap(this->preallocated_feedback_, alternate_feedback_);
+      return true;
+    }
+
+    // Compatibility adapters for the existing JTC call sites. The buffer-management behavior is
+    // implemented in the explicitly named methods above so it can be reviewed and tested directly.
+    void execute()
+    {
+      initialize_feedback_buffers();
+      RealtimeGoalHandleBase::execute();
+    }
+
+    bool setFeedback(FeedbackSharedPtr feedback = nullptr)
+    {
+      if (feedback && feedback == this->preallocated_feedback_)
+      {
+        return set_feedback_from_rt();
+      }
+      return RealtimeGoalHandleBase::setFeedback(feedback);
+    }
+
+  private:
+    FeedbackSharedPtr alternate_feedback_;
+  };
+
   using RealtimeGoalHandlePtr = std::shared_ptr<RealtimeGoalHandle>;
   using RealtimeGoalHandleBuffer = realtime_tools::RealtimeBuffer<RealtimeGoalHandlePtr>;
 

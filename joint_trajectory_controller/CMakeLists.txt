@@ -107,6 +107,13 @@ if(BUILD_TESTING)
     joint_trajectory_controller
     ros2_control_test_assets::ros2_control_test_assets)
 
+  ament_add_gmock(test_realtime_goal_handle
+    test/test_realtime_goal_handle.cpp
+  )
+  target_link_libraries(test_realtime_goal_handle
+    joint_trajectory_controller
+  )
+
   ament_add_gmock(test_trajectory_controller_upsampling
     test/test_trajectory_controller_upsampling.cpp)
   set_tests_properties(test_trajectory_controller_upsampling PROPERTIES TIMEOUT 240)

@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <memory>
-
 #include <gtest/gtest.h>
+
+#include <memory>
 
 #include "control_msgs/action/follow_joint_trajectory.hpp"
 #include "joint_trajectory_controller/joint_trajectory_controller.hpp"
@@ -39,6 +39,7 @@ protected:
   static void TearDownTestSuite() { rclcpp::shutdown(); }
 };
 
+// cppcheck-suppress syntaxError
 TEST_F(RealtimeGoalHandleTest, feedback_buffers_rotate_after_successful_handoff)
 {
   using Action = control_msgs::action::FollowJointTrajectory;
@@ -73,6 +74,7 @@ TEST_F(RealtimeGoalHandleTest, feedback_buffers_rotate_after_successful_handoff)
   EXPECT_EQ(first_buffer.get(), rt_goal->preallocated_feedback_.get());
 }
 
+// cppcheck-suppress syntaxError
 TEST_F(RealtimeGoalHandleTest, uninitialized_feedback_buffers_reject_handoff)
 {
   using Action = control_msgs::action::FollowJointTrajectory;

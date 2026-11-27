@@ -421,6 +421,21 @@ controller_interface::return_type JointTrajectoryController::update(
         {
           tolerance_violated_while_moving = true;
         }
+        // Position-only commands can still have velocity feedback. Use it for the
+        // goal check without changing the path-tolerance or PID error calculation.
+        const bool check_goal_velocity =
+          !before_last_point && !rt_is_holding_ && has_velocity_state_interface_ &&
+          !has_velocity_command_interface_ && !has_effort_command_interface_ &&
+          index < state_error_.velocities.size() && index < state_desired_.velocities.size() &&
+          index < state_current_.velocities.size();
+        const double previous_velocity_error =
+          check_goal_velocity ? state_error_.velocities[index] : 0.0;
+        if (check_goal_velocity)
+        {
+          state_error_.velocities[index] =
+            state_desired_.velocities[index] - state_current_.velocities[index];
+        }
+
         // past the final point, check that we end up inside goal tolerance
         if (
           !before_last_point && !rt_is_holding_ &&
@@ -441,6 +456,10 @@ controller_interface::return_type JointTrajectoryController::update(
                 true /* show_errors */);
             }
           }
+        }
+        if (check_goal_velocity)
+        {
+          state_error_.velocities[index] = previous_velocity_error;
         }
       }
 

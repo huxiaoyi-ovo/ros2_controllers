@@ -172,6 +172,38 @@ protected:
     return action_client_->async_send_goal(goal_msg, opt);
   }
 
+  void CheckPositionOnlyGoalVelocityTolerance(
+    double measured_velocity, rclcpp_action::ResultCode expected_status, int expected_error)
+  {
+    SetUpExecutor(
+      {rclcpp::Parameter("constraints.stopped_velocity_tolerance", 0.001),
+       rclcpp::Parameter("constraints.goal_time", 0.25)},
+      true);
+
+    // Position commands are independent from the measured state in this fixture.
+    for (const auto & velocity_interface : vel_state_interfaces_)
+    {
+      std::ignore = velocity_interface->set_value(measured_velocity);
+    }
+
+    SetUpControllerHardware();
+    std::vector<JointTrajectoryPoint> points(1);
+    points[0].positions = INITIAL_POS_JOINTS;
+    points[0].velocities.assign(joint_names_.size(), 0.0);
+    points[0].time_from_start = rclcpp::Duration::from_seconds(0.2);
+
+    auto goal_future = sendActionGoal(points, 0.25, GoalOptions{});
+    ASSERT_EQ(goal_future.wait_for(std::chrono::seconds(1)), std::future_status::ready);
+    const auto goal_handle = goal_future.get();
+    ASSERT_TRUE(goal_handle);
+    auto result_future = action_client_->async_get_result(goal_handle);
+    ASSERT_EQ(result_future.wait_for(std::chrono::seconds(3)), std::future_status::ready);
+    const auto result = result_future.get();
+    ASSERT_TRUE(result.result);
+    EXPECT_EQ(result.code, expected_status);
+    EXPECT_EQ(result.result->error_code, expected_error);
+  }
+
   void UpdateCycles(size_t cycles)
   {
     const auto period = rclcpp::Duration::from_seconds(0.01);
@@ -473,6 +505,19 @@ TEST_P(TestTrajectoryActionsTestParameterized, test_success_multi_point_with_vel
  * Makes sense with position command interface only,
  * because no integration to position state interface is implemented
  */
+TEST_F(TestTrajectoryActions, position_only_goal_succeeds_when_stopped)
+{
+  CheckPositionOnlyGoalVelocityTolerance(
+    0.0, rclcpp_action::ResultCode::SUCCEEDED, FollowJointTrajectoryMsg::Result::SUCCESSFUL);
+}
+
+TEST_F(TestTrajectoryActions, position_only_goal_rejects_nonzero_velocity)
+{
+  CheckPositionOnlyGoalVelocityTolerance(
+    0.02, rclcpp_action::ResultCode::ABORTED,
+    FollowJointTrajectoryMsg::Result::GOAL_TOLERANCE_VIOLATED);
+}
+
 TEST_F(TestTrajectoryActions, test_goal_tolerances_single_point_success)
 {
   // set tolerance parameters
